@@ -274,6 +274,18 @@ public class ExtractNewRecordStateTest {
   }
 
   @Test
+  public void testUnwrapUpdateRecord() {
+    try (final ExtractNewRecordState<SourceRecord> transform = new ExtractNewRecordState<>()) {
+      final Map<String, String> props = new HashMap<>();
+      transform.configure(props);
+
+      final SourceRecord createRecord = createUpdateRecord();
+      final SourceRecord unwrapped = transform.apply(createRecord);
+      assertThat(((Struct) unwrapped.value()).getInt8("id")).isEqualTo((byte) 1);
+    }
+  }
+
+  @Test
   public void testIgnoreUnknownRecord() {
     try (final ExtractNewRecordState<SourceRecord> transform = new ExtractNewRecordState<>()) {
       final Map<String, String> props = new HashMap<>();
