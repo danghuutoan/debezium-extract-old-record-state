@@ -8,6 +8,7 @@ package com.github.cjmatta.kafka.connect.smt;
 import static org.apache.kafka.connect.transforms.util.Requirements.requireStruct;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -148,6 +149,8 @@ public class ExtractNewRecordState<R extends ConnectRecord<R>> implements Transf
     }
 
     R newRecord = afterDelegate.apply(record);
+    R oldRecord = beforeDelegate.apply(record);
+    List<String> diffFields = getDiffFields(newRecord, oldRecord);
     if (newRecord.value() == null) {
       if (routeByField != null) {
         Struct recordValue = requireStruct(record.value(), "Read record to set topic routing for DELETE");
@@ -162,8 +165,8 @@ public class ExtractNewRecordState<R extends ConnectRecord<R>> implements Transf
           return null;
         case REWRITE:
           LOGGER.trace("Delete message {} requested to be rewritten", record.key());
-          R oldRecord = beforeDelegate.apply(record);
-          oldRecord = addFields(additionalFields, record, oldRecord);
+//          R oldRecord = beforeDelegate.apply(record);
+          oldRecord = addFields(additionalFields, record, oldRecord, diffFields);
 
           return removedDelegate.apply(oldRecord);
         default:
@@ -171,6 +174,7 @@ public class ExtractNewRecordState<R extends ConnectRecord<R>> implements Transf
       }
     }
     else {
+
       // Add on any requested source fields from the original record to the new unwrapped record
       if (routeByField != null) {
         Struct recordValue = requireStruct(newRecord.value(), "Read record to set topic routing for CREATE / UPDATE");
@@ -178,7 +182,7 @@ public class ExtractNewRecordState<R extends ConnectRecord<R>> implements Transf
         newRecord = setTopic(newTopicName, newRecord);
       }
 
-      newRecord = addFields(additionalFields, record, newRecord);
+      newRecord = addFields(additionalFields, record, newRecord, diffFields);
 
       // Handling insert and update records
       switch (handleDeletes) {
@@ -225,7 +229,28 @@ public class ExtractNewRecordState<R extends ConnectRecord<R>> implements Transf
     return headers;
   }
 
-  private R addFields(List<FieldReference> additionalFields, R originalRecord, R unwrappedRecord) {
+  private  List<String> getDiffFields(R unwrappedNewRecord, R unwrappedOldRecord) {
+    List<String> diffFields = new ArrayList<>();
+    if (unwrappedNewRecord.value() != null && unwrappedOldRecord.value() != null){
+      final Struct new_value = requireStruct(unwrappedNewRecord.value(), PURPOSE);
+      final Struct old_value = requireStruct(unwrappedOldRecord.value(), PURPOSE);
+
+      for (org.apache.kafka.connect.data.Field field : new_value.schema().fields()) {
+        String field_name = field.name();
+        Object new_field_value = new_value.get(field_name);
+        Object old_field_value = old_value.get(field_name);
+        boolean isEqual = new_field_value.equals(old_field_value);
+        if (isEqual == false)
+          diffFields.add(field_name);
+        LOGGER.trace("diff ", isEqual);
+      }
+    }
+
+    return diffFields;
+  }
+
+
+  private R addFields(List<FieldReference> additionalFields, R originalRecord, R unwrappedRecord, List<String> diffFields) {
     final Struct value = requireStruct(unwrappedRecord.value(), PURPOSE);
     Struct originalRecordValue = (Struct) originalRecord.value();
 
@@ -239,6 +264,7 @@ public class ExtractNewRecordState<R extends ConnectRecord<R>> implements Transf
 
     }
 
+    updatedValue.put("changed_fields", diffFields);
     for (FieldReference fieldReference : additionalFields) {
       updatedValue = updateValue(fieldReference, updatedValue, originalRecordValue);
     }
@@ -264,7 +290,8 @@ public class ExtractNewRecordState<R extends ConnectRecord<R>> implements Transf
     for (FieldReference fieldReference : additionalFields) {
       builder = updateSchema(fieldReference, builder, originalRecordValue.schema());
     }
-
+    SchemaBuilder changedFieldSchema = (SchemaBuilder) SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA);
+    builder.field("changed_fields",changedFieldSchema);
     return builder.build();
   }
 
