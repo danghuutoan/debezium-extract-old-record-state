@@ -20,8 +20,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.github.cjmatta.kafka.connect.smt</groupId>
-    <artifactId>ExtractNewRecordState</artifactId>
+    <groupId>com.github.danghuutoan.kafka.connect.smt</groupId>
+    <artifactId>ExtractOldRecordState</artifactId>
     <version>1.0-SNAPSHOT</version>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -58,12 +58,12 @@
         <dependency>
             <groupId>io.debezium</groupId>
             <artifactId>debezium-api</artifactId>
-            <version>1.8.1.Final</version>
+            <version>1.9.2.Final</version>
         </dependency>
         <dependency>
             <groupId>io.debezium</groupId>
             <artifactId>debezium-core</artifactId>
-            <version>1.8.1.Final</version>
+            <version>1.9.2.Final</version>
         </dependency>
         <dependency>
             <groupId>org.easytesting</groupId>
@@ -93,4 +93,21 @@
         </repository>
     </repositories>
 
+
+
+    <dependencyManagement>
+    
+
+        <dependencies>
+        
+
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>1.7.30</version>
+            </dependency>
+
+        </dependencies>
+
+    </dependencyManagement>
 </project>

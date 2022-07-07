@@ -3,7 +3,7 @@
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
  */
-package com.github.cjmatta.kafka.connect.smt;
+package com.github.danghuutoan.kafka.connect.smt;
 
 import static org.apache.kafka.connect.transforms.util.Requirements.requireStruct;
 
@@ -62,9 +62,9 @@ import io.debezium.transforms.SmtManager;
  * @param <R> the subtype of {@link ConnectRecord} on which this transformation will operate
  * @author Jiri Pechanec
  */
-public class ExtractNewRecordState<R extends ConnectRecord<R>> implements Transformation<R> {
+public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transformation<R> {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(ExtractNewRecordState.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(ExtractOldRecordState.class);
 
   private static final String PURPOSE = "source field insertion";
   private static final int SCHEMA_CACHE_SIZE = 64;
@@ -290,7 +290,7 @@ public class ExtractNewRecordState<R extends ConnectRecord<R>> implements Transf
     for (FieldReference fieldReference : additionalFields) {
       builder = updateSchema(fieldReference, builder, originalRecordValue.schema());
     }
-    SchemaBuilder changedFieldSchema = (SchemaBuilder) SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA);
+    SchemaBuilder changedFieldSchema = (SchemaBuilder) SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA).optional();
     builder.field("changed_fields",changedFieldSchema);
     return builder.build();
   }

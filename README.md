@@ -9,3 +9,4 @@ Example on how to add to your connector:
 "transforms.unwrap.drop.tombstones": "false",
 "transforms.unwrap.delete.handling.mode":"rewrite",
 ```
+For an update event to contain the previous values of all columns in the row, you would have to change the customers table by running ALTER TABLE customers REPLICA IDENTITY FULL.
