@@ -3,7 +3,7 @@
  *
  * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
  */
-package com.github.danghuutoan.kafka.connect.smt;
+package com.github.danghuutoan.debebezium.transforms;
 
 import static org.fest.assertions.Assertions.assertThat;
 
@@ -19,7 +19,7 @@ import org.apache.kafka.connect.header.Header;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.Test;
 
-import com.github.danghuutoan.kafka.connect.smt.ExtractOldRecordState;
+import com.github.danghuutoan.debezium.transforms.ExtractOldRecordState;
 
 import io.debezium.data.Envelope;
 import io.debezium.pipeline.txmetadata.TransactionMonitor;
