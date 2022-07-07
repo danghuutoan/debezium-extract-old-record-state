@@ -39,7 +39,7 @@ public class ExtractOldRecordStateTest {
 
   final Schema recordSchema = SchemaBuilder.struct()
       .field("id", Schema.INT8_SCHEMA)
-      .field("name", Schema.STRING_SCHEMA)
+      .field("name", Schema.OPTIONAL_STRING_SCHEMA)
       .build();
 
   final Schema sourceSchema = SchemaBuilder.struct()
@@ -127,6 +127,25 @@ public class ExtractOldRecordStateTest {
     return new SourceRecord(new HashMap<>(), new HashMap<>(), "dummy", envelope.schema(), payload);
   }
 
+  private SourceRecord createUpdateRecord(Object old_value, Object new_value) {
+    final Struct before = new Struct(recordSchema);
+    final Struct after = new Struct(recordSchema);
+    final Struct source = new Struct(sourceSchema);
+    final Struct transaction = new Struct(TransactionMonitor.TRANSACTION_BLOCK_SCHEMA);
+
+    before.put("id", (byte) 1);
+    before.put("name", (String) old_value);
+    after.put("id", (byte) 1);
+    after.put("name", (String) new_value);
+    source.put("lsn", 1234);
+    transaction.put("id", "571");
+    transaction.put("total_order", 42L);
+    transaction.put("data_collection_order", 42L);
+    final Struct payload = envelope.update(before, after, source, Instant.now());
+    payload.put("transaction", transaction);
+    return new SourceRecord(new HashMap<>(), new HashMap<>(), "dummy", envelope.schema(), payload);
+  }
+
   private SourceRecord createUpdateRecord() {
     final Struct before = new Struct(recordSchema);
     final Struct after = new Struct(recordSchema);
@@ -134,9 +153,9 @@ public class ExtractOldRecordStateTest {
     final Struct transaction = new Struct(TransactionMonitor.TRANSACTION_BLOCK_SCHEMA);
 
     before.put("id", (byte) 1);
-    before.put("name", "myRecord");
+    before.put("name", (String) "a");
     after.put("id", (byte) 1);
-    after.put("name", "updatedRecord");
+    after.put("name", (String) "updatedRecord");
     source.put("lsn", 1234);
     transaction.put("id", "571");
     transaction.put("total_order", 42L);
@@ -276,12 +295,24 @@ public class ExtractOldRecordStateTest {
   }
 
   @Test
+  public void testUnwrapUpdateRecordNull() {
+    try (final ExtractOldRecordState<SourceRecord> transform = new ExtractOldRecordState<>()) {
+      final Map<String, String> props = new HashMap<>();
+      transform.configure(props);
+
+      final SourceRecord createRecord = createUpdateRecord("a", "b");
+      final SourceRecord unwrapped = transform.apply(createRecord);
+      assertThat(((Struct) unwrapped.value()).getInt8("id")).isEqualTo((byte) 1);
+    }
+  }
+
+  @Test
   public void testUnwrapUpdateRecord() {
     try (final ExtractOldRecordState<SourceRecord> transform = new ExtractOldRecordState<>()) {
       final Map<String, String> props = new HashMap<>();
       transform.configure(props);
 
-      final SourceRecord createRecord = createUpdateRecord();
+      final SourceRecord createRecord = createUpdateRecord(null, null);
       final SourceRecord unwrapped = transform.apply(createRecord);
       assertThat(((Struct) unwrapped.value()).getInt8("id")).isEqualTo((byte) 1);
     }

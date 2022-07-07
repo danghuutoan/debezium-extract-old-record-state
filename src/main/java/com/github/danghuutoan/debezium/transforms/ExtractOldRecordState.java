@@ -239,7 +239,7 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
         String field_name = field.name();
         Object new_field_value = new_value.get(field_name);
         Object old_field_value = old_value.get(field_name);
-        boolean isEqual = new_field_value.equals(old_field_value);
+        boolean isEqual = new_field_value == null ? old_field_value == null : new_field_value.equals(old_field_value);
         if (isEqual == false)
           diffFields.add(field_name);
         LOGGER.trace("diff ", isEqual);
