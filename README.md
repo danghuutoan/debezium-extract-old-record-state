@@ -5,7 +5,7 @@ This SMT supports extracting changed field of updated data
 Example on how to add to your connector:
 ```
 "transforms": "unwrap",
-"transforms.unwrap.type": "com.github.cjmatta.kafka.connect.smt.ExtractNewRecordState",
+"transforms.unwrap.type": "com.github.danghuutoan.kafka.connect.smt.ExtractOldRecordState",
 "transforms.unwrap.drop.tombstones": "false",
 "transforms.unwrap.delete.handling.mode":"rewrite",
 ```
