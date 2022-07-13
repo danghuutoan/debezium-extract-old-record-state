@@ -39,27 +39,38 @@ import io.debezium.data.Envelope.FieldName;
 import io.debezium.data.Envelope.Operation;
 import io.debezium.pipeline.txmetadata.TransactionMonitor;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition.DeleteHandling;
+import io.debezium.transforms.ExtractNewRecordState;
 import io.debezium.util.BoundedConcurrentHashMap;
 import io.debezium.util.Strings;
 import io.debezium.transforms.ExtractNewRecordStateConfigDefinition;
 import io.debezium.transforms.SmtManager;
+
 /**
- * Debezium generates CDC (<code>Envelope</code>) records that are struct of values containing values
- * <code>before</code> and <code>after change</code>. Sink connectors usually are not able to work
- * with a complex structure so a user use this SMT to extract <code>after</code> value and send it down
+ * Debezium generates CDC (<code>Envelope</code>) records that are struct of
+ * values containing values
+ * <code>before</code> and <code>after change</code>. Sink connectors usually
+ * are not able to work
+ * with a complex structure so a user use this SMT to extract <code>after</code>
+ * value and send it down
  * unwrapped in <code>Envelope</code>.
  * <p>
- * The functionality is similar to <code>ExtractField</code> SMT but has a special semantics for handling
- * delete events; when delete event is emitted by database then Debezium emits two messages: a delete
- * message and a tombstone message that serves as a signal to Kafka compaction process.
+ * The functionality is similar to <code>ExtractField</code> SMT but has a
+ * special semantics for handling
+ * delete events; when delete event is emitted by database then Debezium emits
+ * two messages: a delete
+ * message and a tombstone message that serves as a signal to Kafka compaction
+ * process.
  * <p>
- * The SMT by default drops the tombstone message created by Debezium and converts the delete message into
+ * The SMT by default drops the tombstone message created by Debezium and
+ * converts the delete message into
  * a tombstone message that can be dropped, too, if required.
  * <p>
- * The SMT also has the option to insert fields from the original record (e.g. 'op' or 'source.ts_ms' into the
+ * The SMT also has the option to insert fields from the original record (e.g.
+ * 'op' or 'source.ts_ms' into the
  * unwrapped record or ad them as header attributes.
  *
- * @param <R> the subtype of {@link ConnectRecord} on which this transformation will operate
+ * @param <R> the subtype of {@link ConnectRecord} on which this transformation
+ *            will operate
  * @author Jiri Pechanec
  */
 public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transformation<R> {
@@ -88,7 +99,8 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
     final Configuration config = Configuration.from(configs);
     smtManager = new SmtManager<>(config);
 
-    final Field.Set configFields = Field.setOf(ExtractNewRecordStateConfigDefinition.DROP_TOMBSTONES, ExtractNewRecordStateConfigDefinition.HANDLE_DELETES);
+    final Field.Set configFields = Field.setOf(ExtractNewRecordStateConfigDefinition.DROP_TOMBSTONES,
+        ExtractNewRecordStateConfigDefinition.HANDLE_DELETES);
     if (!config.validateAndRecord(configFields, LOGGER::error)) {
       throw new ConnectException("Unable to validate config.");
     }
@@ -98,8 +110,10 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
 
     String addFieldsPrefix = config.getString(ExtractNewRecordStateConfigDefinition.ADD_FIELDS_PREFIX);
     String addHeadersPrefix = config.getString(ExtractNewRecordStateConfigDefinition.ADD_HEADERS_PREFIX);
-    additionalFields = FieldReference.fromConfiguration(addFieldsPrefix, config.getString(ExtractNewRecordStateConfigDefinition.ADD_FIELDS));
-    additionalHeaders = FieldReference.fromConfiguration(addHeadersPrefix, config.getString(ExtractNewRecordStateConfigDefinition.ADD_HEADERS));
+    additionalFields = FieldReference.fromConfiguration(addFieldsPrefix,
+        config.getString(ExtractNewRecordStateConfigDefinition.ADD_FIELDS));
+    additionalHeaders = FieldReference.fromConfiguration(addHeadersPrefix,
+        config.getString(ExtractNewRecordStateConfigDefinition.ADD_HEADERS));
 
     String routeFieldConfig = config.getString(ExtractNewRecordStateConfigDefinition.ROUTE_BY_FIELD);
     routeByField = routeFieldConfig.isEmpty() ? null : routeFieldConfig;
@@ -151,11 +165,19 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
     R newRecord = afterDelegate.apply(record);
     R oldRecord = beforeDelegate.apply(record);
     List<String> diffFields = getDiffFields(newRecord, oldRecord);
+    if (oldRecord.value() == null) {
+      return extractNewState(record, newRecord, diffFields);
+    } else {
+      return extractOldState(record, oldRecord, newRecord, diffFields);
+    }
+  }
+
+  private R extractOldState(final R record, R oldRecord, R newRecord, List<String> diffFields) {
     if (newRecord.value() == null) {
       if (routeByField != null) {
         Struct recordValue = requireStruct(record.value(), "Read record to set topic routing for DELETE");
         String newTopicName = recordValue.getStruct("before").getString(routeByField);
-        newRecord = setTopic(newTopicName, newRecord);
+        oldRecord = setTopic(newTopicName, oldRecord);
       }
 
       // Handling delete records
@@ -165,21 +187,21 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
           return null;
         case REWRITE:
           LOGGER.trace("Delete message {} requested to be rewritten", record.key());
-//          R oldRecord = beforeDelegate.apply(record);
+          // R oldRecord = beforeDelegate.apply(record);
           oldRecord = addFields(additionalFields, record, oldRecord, diffFields);
 
           return removedDelegate.apply(oldRecord);
         default:
           return oldRecord;
       }
-    }
-    else {
+    } else {
 
-      // Add on any requested source fields from the original record to the new unwrapped record
+      // Add on any requested source fields from the original record to the new
+      // unwrapped record
       if (routeByField != null) {
-        Struct recordValue = requireStruct(newRecord.value(), "Read record to set topic routing for CREATE / UPDATE");
+        Struct recordValue = requireStruct(oldRecord.value(), "Read record to set topic routing for CREATE / UPDATE");
         String newTopicName = recordValue.getString(routeByField);
-        newRecord = setTopic(newTopicName, newRecord);
+        oldRecord = setTopic(newTopicName, oldRecord);
       }
 
       oldRecord = addFields(additionalFields, record, oldRecord, diffFields);
@@ -195,17 +217,61 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
     }
   }
 
+  private R extractNewState(final R record, R newRecord, List<String> diffFields) {
+    if (newRecord.value() == null) {
+      if (routeByField != null) {
+        Struct recordValue = requireStruct(record.value(), "Read record to set topic routing for DELETE");
+        String newTopicName = recordValue.getStruct("before").getString(routeByField);
+        newRecord = setTopic(newTopicName, newRecord);
+      }
+
+      // Handling delete records
+      switch (handleDeletes) {
+        case DROP:
+          LOGGER.trace("Delete message {} requested to be dropped", record.key());
+          return null;
+        case REWRITE:
+          LOGGER.trace("Delete message {} requested to be rewritten", record.key());
+          newRecord = addFields(additionalFields, record, newRecord, diffFields);
+
+          return removedDelegate.apply(newRecord);
+        default:
+          return newRecord;
+      }
+    } else {
+
+      // Add on any requested source fields from the original record to the new
+      // unwrapped record
+      if (routeByField != null) {
+        Struct recordValue = requireStruct(newRecord.value(), "Read record to set topic routing for CREATE / UPDATE");
+        String newTopicName = recordValue.getString(routeByField);
+        newRecord = setTopic(newTopicName, newRecord);
+      }
+
+      newRecord = addFields(additionalFields, record, newRecord, diffFields);
+
+      // Handling insert and update records
+      switch (handleDeletes) {
+        case REWRITE:
+          LOGGER.trace("Insert/update message {} requested to be rewritten", record.key());
+          return updatedDelegate.apply(newRecord);
+        default:
+          return newRecord;
+      }
+    }
+  }
+
   private R setTopic(String updatedTopicValue, R record) {
     String topicName = updatedTopicValue == null ? record.topic() : updatedTopicValue;
 
     return record.newRecord(
-            topicName,
-            record.kafkaPartition(),
-            record.keySchema(),
-            record.key(),
-            record.valueSchema(),
-            record.value(),
-            record.timestamp());
+        topicName,
+        record.kafkaPartition(),
+        record.keySchema(),
+        record.key(),
+        record.valueSchema(),
+        record.value(),
+        record.timestamp());
   }
 
   /**
@@ -223,15 +289,15 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
         continue;
       }
       headers.add(fieldReference.getNewField(), fieldReference.getValue(originalRecordValue),
-              fieldReference.getSchema(originalRecordValue.schema()));
+          fieldReference.getSchema(originalRecordValue.schema()));
     }
 
     return headers;
   }
 
-  private  List<String> getDiffFields(R unwrappedNewRecord, R unwrappedOldRecord) {
+  private List<String> getDiffFields(R unwrappedNewRecord, R unwrappedOldRecord) {
     List<String> diffFields = new ArrayList<>();
-    if (unwrappedNewRecord.value() != null && unwrappedOldRecord.value() != null){
+    if (unwrappedNewRecord.value() != null && unwrappedOldRecord.value() != null) {
       final Struct new_value = requireStruct(unwrappedNewRecord.value(), PURPOSE);
       final Struct old_value = requireStruct(unwrappedOldRecord.value(), PURPOSE);
 
@@ -249,13 +315,13 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
     return diffFields;
   }
 
-
-  private R addFields(List<FieldReference> additionalFields, R originalRecord, R unwrappedRecord, List<String> diffFields) {
+  private R addFields(List<FieldReference> additionalFields, R originalRecord, R unwrappedRecord,
+      List<String> diffFields) {
     final Struct value = requireStruct(unwrappedRecord.value(), PURPOSE);
     Struct originalRecordValue = (Struct) originalRecord.value();
 
     Schema updatedSchema = schemaUpdateCache.computeIfAbsent(value.schema(),
-            s -> makeUpdatedSchema(additionalFields, value.schema(), originalRecordValue));
+        s -> makeUpdatedSchema(additionalFields, value.schema(), originalRecordValue));
 
     // Update the value with the new fields
     Struct updatedValue = new Struct(updatedSchema);
@@ -270,13 +336,13 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
     }
 
     return unwrappedRecord.newRecord(
-            unwrappedRecord.topic(),
-            unwrappedRecord.kafkaPartition(),
-            unwrappedRecord.keySchema(),
-            unwrappedRecord.key(),
-            updatedSchema,
-            updatedValue,
-            unwrappedRecord.timestamp());
+        unwrappedRecord.topic(),
+        unwrappedRecord.kafkaPartition(),
+        unwrappedRecord.keySchema(),
+        unwrappedRecord.key(),
+        updatedSchema,
+        updatedValue,
+        unwrappedRecord.timestamp());
   }
 
   private Schema makeUpdatedSchema(List<FieldReference> additionalFields, Schema schema, Struct originalRecordValue) {
@@ -291,11 +357,12 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
       builder = updateSchema(fieldReference, builder, originalRecordValue.schema());
     }
     SchemaBuilder changedFieldSchema = (SchemaBuilder) SchemaBuilder.array(Schema.OPTIONAL_STRING_SCHEMA).optional();
-    builder.field("changed_fields",changedFieldSchema);
+    builder.field("changed_fields", changedFieldSchema);
     return builder.build();
   }
 
-  private SchemaBuilder updateSchema(FieldReference fieldReference, SchemaBuilder builder, Schema originalRecordSchema) {
+  private SchemaBuilder updateSchema(FieldReference fieldReference, SchemaBuilder builder,
+      Schema originalRecordSchema) {
     return builder.field(fieldReference.getNewField(), fieldReference.getSchema(originalRecordSchema));
   }
 
@@ -307,9 +374,9 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
   public ConfigDef config() {
     final ConfigDef config = new ConfigDef();
     Field.group(config, null, ExtractNewRecordStateConfigDefinition.DROP_TOMBSTONES,
-            ExtractNewRecordStateConfigDefinition.HANDLE_DELETES, ExtractNewRecordStateConfigDefinition.ADD_FIELDS,
-            ExtractNewRecordStateConfigDefinition.ADD_HEADERS,
-            ExtractNewRecordStateConfigDefinition.ROUTE_BY_FIELD);
+        ExtractNewRecordStateConfigDefinition.HANDLE_DELETES, ExtractNewRecordStateConfigDefinition.ADD_FIELDS,
+        ExtractNewRecordStateConfigDefinition.ADD_HEADERS,
+        ExtractNewRecordStateConfigDefinition.ROUTE_BY_FIELD);
     return config;
   }
 
@@ -328,7 +395,8 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
   private static class FieldReference {
 
     /**
-     * The struct ("source", "transaction") hosting the given field, or {@code null} for "op" and "ts_ms".
+     * The struct ("source", "transaction") hosting the given field, or {@code null}
+     * for "op" and "ts_ms".
      */
     private final String struct;
 
@@ -338,7 +406,8 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
     private final String field;
 
     /**
-     * The name for the outgoing attribute/field, e.g. "__op" or "__source_ts_ms" when the prefix is "__"
+     * The name for the outgoing attribute/field, e.g. "__op" or "__source_ts_ms"
+     * when the prefix is "__"
      */
     private final String newField;
 
@@ -350,11 +419,9 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
 
       if (parts.length == 1) {
         this.newField = prefix + (splits.length == 1 ? this.field : this.struct + "_" + this.field);
-      }
-      else if (parts.length == 2) {
+      } else if (parts.length == 2) {
         this.newField = prefix + parts[1];
-      }
-      else {
+      } else {
         throw new IllegalArgumentException("Unexpected field name: " + field);
       }
     }
@@ -363,15 +430,14 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
      * Determines the struct hosting the given unqualified field.
      */
     private static String determineStruct(String simpleFieldName) {
-      if (simpleFieldName.equals(Envelope.FieldName.OPERATION) || simpleFieldName.equals(Envelope.FieldName.TIMESTAMP)) {
+      if (simpleFieldName.equals(Envelope.FieldName.OPERATION)
+          || simpleFieldName.equals(Envelope.FieldName.TIMESTAMP)) {
         return null;
-      }
-      else if (simpleFieldName.equals(TransactionMonitor.DEBEZIUM_TRANSACTION_ID_KEY) ||
-              simpleFieldName.equals(TransactionMonitor.DEBEZIUM_TRANSACTION_DATA_COLLECTION_ORDER_KEY) ||
-              simpleFieldName.equals(TransactionMonitor.DEBEZIUM_TRANSACTION_TOTAL_ORDER_KEY)) {
+      } else if (simpleFieldName.equals(TransactionMonitor.DEBEZIUM_TRANSACTION_ID_KEY) ||
+          simpleFieldName.equals(TransactionMonitor.DEBEZIUM_TRANSACTION_DATA_COLLECTION_ORDER_KEY) ||
+          simpleFieldName.equals(TransactionMonitor.DEBEZIUM_TRANSACTION_TOTAL_ORDER_KEY)) {
         return Envelope.FieldName.TRANSACTION;
-      }
-      else {
+      } else {
         return Envelope.FieldName.SOURCE;
       }
     }
@@ -379,12 +445,11 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
     static List<FieldReference> fromConfiguration(String fieldPrefix, String addHeadersConfig) {
       if (Strings.isNullOrEmpty(addHeadersConfig)) {
         return Collections.emptyList();
-      }
-      else {
+      } else {
         return Arrays.stream(addHeadersConfig.split(","))
-                .map(String::trim)
-                .map(field -> new FieldReference(fieldPrefix, field))
-                .collect(Collectors.toList());
+            .map(String::trim)
+            .map(field -> new FieldReference(fieldPrefix, field))
+            .collect(Collectors.toList());
       }
     }
 
