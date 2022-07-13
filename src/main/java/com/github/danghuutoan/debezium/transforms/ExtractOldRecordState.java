@@ -170,7 +170,7 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
 
           return removedDelegate.apply(oldRecord);
         default:
-          return newRecord;
+          return oldRecord;
       }
     }
     else {
@@ -182,15 +182,15 @@ public class ExtractOldRecordState<R extends ConnectRecord<R>> implements Transf
         newRecord = setTopic(newTopicName, newRecord);
       }
 
-      newRecord = addFields(additionalFields, record, newRecord, diffFields);
+      oldRecord = addFields(additionalFields, record, oldRecord, diffFields);
 
       // Handling insert and update records
       switch (handleDeletes) {
         case REWRITE:
           LOGGER.trace("Insert/update message {} requested to be rewritten", record.key());
-          return updatedDelegate.apply(newRecord);
+          return updatedDelegate.apply(oldRecord);
         default:
-          return newRecord;
+          return oldRecord;
       }
     }
   }

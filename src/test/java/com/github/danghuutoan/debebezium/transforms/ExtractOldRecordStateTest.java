@@ -260,6 +260,7 @@ public class ExtractOldRecordStateTest {
 
       final SourceRecord deleteRecord = createDeleteRecord();
       final SourceRecord unwrapped = transform.apply(deleteRecord);
+      assertThat(((Struct) unwrapped.value()).getString("name")).isEqualTo("myRecord");
       assertThat(((Struct) unwrapped.value()).getString("__deleted")).isEqualTo("true");
     }
   }
@@ -295,7 +296,7 @@ public class ExtractOldRecordStateTest {
   }
 
   @Test
-  public void testUnwrapUpdateRecordNull() {
+  public void testUnwrapUpdateRecord() {
     try (final ExtractOldRecordState<SourceRecord> transform = new ExtractOldRecordState<>()) {
       final Map<String, String> props = new HashMap<>();
       transform.configure(props);
@@ -303,11 +304,12 @@ public class ExtractOldRecordStateTest {
       final SourceRecord createRecord = createUpdateRecord("a", "b");
       final SourceRecord unwrapped = transform.apply(createRecord);
       assertThat(((Struct) unwrapped.value()).getInt8("id")).isEqualTo((byte) 1);
+      assertThat(((Struct) unwrapped.value()).getString("name")).isEqualTo("a");
     }
   }
 
   @Test
-  public void testUnwrapUpdateRecord() {
+  public void testUnwrapUpdateRecordNull() {
     try (final ExtractOldRecordState<SourceRecord> transform = new ExtractOldRecordState<>()) {
       final Map<String, String> props = new HashMap<>();
       transform.configure(props);
